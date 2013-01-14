@@ -59,8 +59,15 @@ class PullRequest < Struct.new(:project, :pull_id)
     end
   end
 
+  def maintainers
+    %w(
+      kostia
+      krishan
+    )
+  end
+
   def maintainer_comments
-    comments.select { |comment| comment['user']['login'] == "krishan" }
+    comments.select { |comment| maintainers.include? comment['user']['login'] }
   end
 
   def last_feedback
