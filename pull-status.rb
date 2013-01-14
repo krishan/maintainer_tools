@@ -146,7 +146,7 @@ end
 
 def open_compare(pull_request, from, to)
   compare_url = pull_request.project.web_url("/compare/#{from}...#{to}")
-  sh "open #{compare_url}"
+  sh "open #{compare_url} || firefox #{compare_url} || firefox-bin #{compare_url}"
 end
 
 def sha_equal(a, b)
