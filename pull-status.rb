@@ -144,9 +144,12 @@ def find_maintainer_comment(comment_body)
   end
 end
 
+def open_url(url)
+  sh "open #{url} || firefox #{url} || firefox-bin #{url}"
+end
+
 def open_compare(pull_request, from, to)
-  compare_url = pull_request.project.web_url("/compare/#{from}...#{to}")
-  sh "open #{compare_url} || firefox #{compare_url} || firefox-bin #{compare_url}"
+  open_url pull_request.project.web_url("/compare/#{from}...#{to}")
 end
 
 def sha_equal(a, b)
@@ -193,7 +196,7 @@ if !pull_request.successful_cruises.empty?
   puts "successful cruises: #{pull_request.successful_cruises.join(", ")}"
 elsif !pull_request.failing_cruises.empty?
   puts "only failing cruises."
-  sh("open #{pull_request.failing_cruises.first}")
+  open_url pull_request.failing_cruises.first
 else
   puts "no current cruises."
 end
