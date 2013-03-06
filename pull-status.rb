@@ -2,11 +2,12 @@
 
 require "rubygems"
 
-require "pp"
 require "restclient"
 
 gem "hub", "= 1.10.1"
 require "hub"
+
+require_relative "pull_request"
 
 include Hub::Context
 include Hub::GitHubAPI::HttpMethods
@@ -18,73 +19,13 @@ def sh(cmd)
   output
 end
 
-SHA_REGEXP = /\(\s*([0-9a-f]{7,40})\s*\)/
-
-class PullRequest < Struct.new(:project, :pull_id)
-  def info
-    @info ||= api.pullrequest_info(project, pull_id)
-  end
-
-  def base_repo
-    info["base"]["repo"]
-  end
-
-  def master_branch_current_sha
-    master_branch_info["commit"]["sha"]
-  end
-
-  def master_branch_info
-    @master_branch_info ||= api.get(base_repo["url"]+"/branches/#{master_branch_name}").data
-  end
-
-  def master_branch_name
-    base_repo["master_branch"]
-  end
-
-  def current_sha
-    info["head"]["sha"][0..6]
-  end
-
-  def comments
-    @comments ||= api.get(info["_links"]["comments"]["href"]).data
-  end
-
-  def api
-    Hub::Commands.__send__(:api_client)
-  end
-
-  def last_reviewed_sha
-    if last_feedback
-      last_feedback.match(SHA_REGEXP)[1]
-    end
-  end
-
-  def maintainers
-    %w(
-      kostia
-      krishan
-    )
-  end
-
-  def maintainer_comments
-    comments.select { |comment| maintainers.include? comment['user']['login'] }
-  end
-
-  def last_feedback
-    feedback_comments = maintainer_comments.select do |comment|
-      find_maintainer_comment(comment["body"])
-    end
-
-    unless feedback_comments.empty?
-      feedback_comments.last['body']
-    end
-  end
+module WithCruises
 
   def cruises
     @cruises ||=
       begin
-        comment_bodies = comments.map { |comment| comment["body"] }
-        cruise_urls = (comment_bodies + [info["body"]]).
+        comment_bodies = comments.map { |comment| comment.body }
+        cruise_urls = (comment_bodies + [data["body"]]).
           map { |text| text.scan(/(http:\/\/cruise\S+)/) }.
           flatten
 
@@ -128,8 +69,9 @@ class PullRequest < Struct.new(:project, :pull_id)
       end
     end
   end
-
 end
+
+PullRequest.__send__(:include, WithCruises)
 
 def output_choices(pull_request)
   puts "possible choices:"
@@ -138,18 +80,12 @@ def output_choices(pull_request)
   puts
 end
 
-def find_maintainer_comment(comment_body)
-  if comment_body =~ /(FEEDBACK|OK) / && comment_body =~ SHA_REGEXP
-    $1
-  end
-end
-
 def open_url(url)
   sh "open #{url} || firefox #{url} || firefox-bin #{url}"
 end
 
-def open_compare(pull_request, from, to)
-  open_url pull_request.project.web_url("/compare/#{from}...#{to}")
+def open_compare(project, pull_request, from, to)
+  open_url project.web_url("/compare/#{from}...#{to}")
 end
 
 def sha_equal(a, b)
@@ -165,30 +101,32 @@ unless pull_url =~ /\/pull\/(\d+)/
 end
 pull_id = $1
 
-pull_request = PullRequest.new(project, pull_id)
+api = Hub::Commands.__send__(:api_client)
+
+pull_request = PullRequest.new(api.pullrequest_info(project, pull_id))
 
 puts "pull request sha: #{pull_request.current_sha}"
 puts
 
-if !pull_request.last_reviewed_sha
+if !pull_request.current_review
   puts "never reviewed."
   if lmc = pull_request.maintainer_comments.last
     puts "last maintainer comment:"
-    puts lmc["body"]
+    puts lmc.body
   end
   output_choices(pull_request)
-elsif !sha_equal(pull_request.last_reviewed_sha, pull_request.current_sha)
+elsif !sha_equal(pull_request.current_review.sha, pull_request.current_sha)
   puts "unreviewed commits present. opening in brower."
-  open_compare(pull_request, pull_request.last_reviewed_sha, pull_request.current_sha)
+  open_compare(project, pull_request, pull_request.current_review.sha, pull_request.current_sha)
 
   puts
-  puts "last feedback was:"
-  puts pull_request.last_feedback
+  puts "last approval from maintainer was:"
+  puts pull_request.current_review.status
   puts
 
   output_choices(pull_request)
 else
-  puts "everything reviewed, status: #{find_maintainer_comment(pull_request.last_feedback)}"
+  puts "everything reviewed, approval: #{pull_request.current_review}"
 end
 
 
@@ -213,7 +151,7 @@ if merge_base == pull_request.master_branch_current_sha
   puts "pull request is fast-forward-able."
 else
   puts "pull request must be merged, merge base is #{merge_base}."
-  open_compare(pull_request, merge_base, pull_request.master_branch_name)
+  open_compare(project, pull_request, merge_base, pull_request.master_branch_name)
 end
 puts
 
