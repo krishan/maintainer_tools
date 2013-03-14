@@ -92,6 +92,28 @@ def sha_equal(a, b)
   a[0..6] == b[0..6]
 end
 
+def find_merge_base(master_rev, branch_rev)
+  sh("git merge-base #{master_rev} #{branch_rev}").strip
+end
+
+def find_merge_base_with_pull(pull_request)
+  current_branch_name = sh "git rev-parse --abbrev-ref HEAD".strip
+  retried = false
+
+  begin
+    find_merge_base(pull_request.master_branch_current_sha, pull_request.current_sha)
+  rescue
+    raise if retried
+    sh "git co #{pull_request.master_branch_name}"
+    sh "git pull"
+    retried = true
+    retry
+  ensure
+    sh "git checkout #{current_branch_name}"
+  end
+end
+
+
 project = local_repo.main_project
 
 pull_url = ARGV[0]
@@ -121,7 +143,7 @@ elsif !sha_equal(pull_request.current_review.sha, pull_request.current_sha)
 
   puts
   puts "last approval from maintainer was:"
-  puts pull_request.current_review.status
+  puts pull_request.current_review
   puts
 
   output_choices(pull_request)
@@ -145,7 +167,7 @@ puts
 sh "git co #{pull_request.master_branch_name}"
 sh "hub co #{pull_url}"
 
-merge_base = sh("git merge-base #{pull_request.master_branch_current_sha} #{pull_request.current_sha}").strip
+merge_base = find_merge_base_with_pull(pull_request)
 
 if merge_base == pull_request.master_branch_current_sha
   puts "pull request is fast-forward-able."
