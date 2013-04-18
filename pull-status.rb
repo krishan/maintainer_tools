@@ -138,6 +138,10 @@ def show_pending_merges(pull_request)
   puts
 end
 
+def diff_chunks_command(args)
+  "cd #{Dir.pwd} && diff_chunks #{args}"
+end
+
 pull_url = ARGV[0]
 unless pull_url.match(/\/([^\/]+)\/pull\/(\d+)/)
   puts "usage: pull-status.rb <github pull url>"
@@ -174,8 +178,9 @@ show_cruises(pull_request)
 show_pending_merges(pull_request)
 
 if !pull_request.current_review
+  puts
   puts "never reviewed."
-  puts "diff_chunks #{pull_request.master_branch_name} ^head ^#{pull_request.current_review.sha} | pbcopy"
+  puts diff_chunks_command("#{pull_request.master_branch_name} ^head ^#{pull_request.current_review.sha}")
 
   if lmc = pull_request.maintainer_comments.last
     puts "last maintainer comment:"
@@ -191,7 +196,7 @@ elsif !sha_equal(pull_request.current_review.sha, pull_request.current_sha)
 
   puts "unreviewed commits: "
   puts compare_url(pull_request, pull_request.current_review.sha, pull_request.current_sha)
-  puts "diff_chunks #{pull_request.master_branch_name} ^head ^#{pull_request.current_review.sha}"
+  puts diff_chunks_command("#{pull_request.master_branch_name} ^head ^#{pull_request.current_review.sha}")
 
   puts
   output_choices(pull_request)
