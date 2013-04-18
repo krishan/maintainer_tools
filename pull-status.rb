@@ -21,6 +21,24 @@ def sh(cmd)
   output
 end
 
+def local_repo_dir(project_name)
+  local_repos_mapping_file = File.expand_path("~/.config/maintainer_tools/local_repositories.yml")
+
+  if !File.exists?(local_repos_mapping_file)
+    raise "missing configuration file: `#{local_repos_mapping_file}`"
+  end
+
+  project_directory_mapping = YAML.load(File.read(local_repos_mapping_file))
+
+  raw_local_repo_dir = project_directory_mapping[project_name]
+
+  if !raw_local_repo_dir
+    raise "no local repository configured for project `#{project_name}`, check `#{local_repos_mapping_file}`"
+  end
+
+  File.expand_path(raw_local_repo_dir)
+end
+
 module WithCruises
 
   def cruises
@@ -75,72 +93,109 @@ end
 
 PullRequest.__send__(:include, WithCruises)
 
-def output_choices(pull_request)
-  puts "possible choices:"
-  puts "OK (#{pull_request.current_sha})"
-  puts "FEEDBACK (#{pull_request.current_sha})"
-  puts
-end
+module Reporting
 
-def compare_url(pull_request, from, to)
-  "#{pull_request.base_repo_html_url}/compare/#{from}...#{to}"
-end
+  def output_choices
+    puts "possible choices:"
+    puts "OK (#{current_sha})"
+    puts "FEEDBACK (#{current_sha})"
+    puts
+  end
 
-def sha_equal(a, b)
-  a[0..6] == b[0..6]
-end
+  def compare_url(from, to)
+    "#{base_repo_html_url}/compare/#{from}...#{to}"
+  end
 
-def find_merge_base(master_rev, branch_rev)
-  sh("git merge-base #{master_rev} #{branch_rev}").strip
-end
+  def sha_equal(a, b)
+    a[0..6] == b[0..6]
+  end
 
-def find_merge_base_with_pull(pull_request)
-  current_branch_name = sh("git rev-parse --abbrev-ref HEAD").strip
-  retried = false
+  def find_merge_base(master_rev, branch_rev)
+    sh("git merge-base #{master_rev} #{branch_rev}").strip
+  end
 
-  begin
-    find_merge_base(pull_request.master_branch_current_sha, pull_request.current_sha)
-  rescue
-    raise if retried
-    sh "git co #{pull_request.master_branch_name}"
-    sh "git pull"
-    retried = true
-    retry
-  ensure
-    sh "git checkout #{current_branch_name}"
+  def find_merge_base_with_pull
+    current_branch_name = sh("git rev-parse --abbrev-ref HEAD").strip
+    retried = false
+
+    begin
+      find_merge_base(master_branch_current_sha, current_sha)
+    rescue
+      raise if retried
+      sh "git co #{master_branch_name}"
+      sh "git pull"
+      retried = true
+      retry
+    ensure
+      sh "git checkout #{current_branch_name}"
+    end
+  end
+
+  def show_cruises
+    if !successful_cruises.empty?
+      puts "successful cruises: #{successful_cruises.join(", ")}"
+    elsif !failing_cruises.empty?
+      puts "only failing cruises:"
+      puts failing_cruises.first
+    else
+      puts "no current cruises."
+    end
+    puts
+  end
+
+  def show_pending_merges
+    sh "git co #{master_branch_name}"
+    sh "hub co #{url}"
+
+    merge_base = find_merge_base_with_pull
+
+    if merge_base == master_branch_current_sha
+      puts "pull request is fast-forward-able."
+    else
+      puts "pull request must be merged, merge base is #{merge_base}."
+      puts compare_url(merge_base, master_branch_name)
+    end
+    puts
+  end
+
+  def diff_chunks_command(args)
+    "cd #{Dir.pwd} && diff_chunks #{args}"
+  end
+
+  def show_review_status
+    if !current_review
+      puts
+      puts "never reviewed."
+      puts diff_chunks_command("#{current_sha} ^#{master_branch_name}")
+
+      puts
+      output_choices
+    elsif !sha_equal(current_review.sha, current_sha)
+      puts
+      puts "last approval from maintainer was: #{current_review}"
+      puts
+
+      if lmc = maintainer_comments.last
+        puts "last maintainer comment:"
+        puts lmc.body.gsub(/\r/, "")
+        puts
+      end
+
+      puts "unreviewed commits: "
+      puts compare_url(current_review.sha, current_sha)
+      puts diff_chunks_command("#{current_sha} ^#{master_branch_name} ^#{current_review.sha}")
+
+      puts
+      output_choices
+    else
+      puts "everything reviewed, approval: #{current_review}"
+    end
   end
 end
 
-def show_cruises(pull_request)
-  if !pull_request.successful_cruises.empty?
-    puts "successful cruises: #{pull_request.successful_cruises.join(", ")}"
-  elsif !pull_request.failing_cruises.empty?
-    puts "only failing cruises:"
-    puts pull_request.failing_cruises.first
-  else
-    puts "no current cruises."
-  end
-  puts
-end
+PullRequest.__send__(:include, Reporting)
 
-def show_pending_merges(pull_request)
-  sh "git co #{pull_request.master_branch_name}"
-  sh "hub co #{pull_request.url}"
-
-  merge_base = find_merge_base_with_pull(pull_request)
-
-  if merge_base == pull_request.master_branch_current_sha
-    puts "pull request is fast-forward-able."
-  else
-    puts "pull request must be merged, merge base is #{merge_base}."
-    puts compare_url(pull_request, merge_base, pull_request.master_branch_name)
-  end
-  puts
-end
-
-def diff_chunks_command(args)
-  "cd #{Dir.pwd} && diff_chunks #{args}"
-end
+### MAIN COMMAND STARTS HERE
 
 pull_url = ARGV[0]
 unless pull_url.match(/\/([^\/]+)\/pull\/(\d+)/)
@@ -151,21 +206,7 @@ end
 project_name = $1
 pull_id = $2
 
-local_repos_mapping_file = File.expand_path("~/.config/maintainer_tools/local_repositories.yml")
-
-if !File.exists?(local_repos_mapping_file)
-  raise "missing configuration file: `#{local_repos_mapping_file}`"
-end
-
-project_directory_mapping = YAML.load(File.read(local_repos_mapping_file))
-
-local_repo_dir = File.expand_path(project_directory_mapping[project_name])
-
-if !local_repo_dir
-  raise "no local repository configured for project `#{project_name}`, check `#{local_repos_mapping_file}`"
-end
-
-Dir.chdir local_repo_dir
+Dir.chdir local_repo_dir(project_name)
 
 project = local_repo.main_project
 
@@ -173,37 +214,11 @@ api = Hub::Commands.__send__(:api_client)
 
 pull_request = PullRequest.new(api.pullrequest_info(project, pull_id))
 
-show_cruises(pull_request)
+pull_request.show_cruises
 
-show_pending_merges(pull_request)
+pull_request.show_pending_merges
 
-if !pull_request.current_review
-  puts
-  puts "never reviewed."
-  puts diff_chunks_command("#{pull_request.master_branch_name} ^head ^#{pull_request.current_review.sha}")
-
-  puts
-  output_choices(pull_request)
-elsif !sha_equal(pull_request.current_review.sha, pull_request.current_sha)
-  puts
-  puts "last approval from maintainer was: #{pull_request.current_review}"
-  puts
-
-  if lmc = pull_request.maintainer_comments.last
-    puts "last maintainer comment:"
-    puts lmc.body.gsub(/\r/, "")
-    puts
-  end
-
-  puts "unreviewed commits: "
-  puts compare_url(pull_request, pull_request.current_review.sha, pull_request.current_sha)
-  puts diff_chunks_command("#{pull_request.master_branch_name} ^head ^#{pull_request.current_review.sha}")
-
-  puts
-  output_choices(pull_request)
-else
-  puts "everything reviewed, approval: #{pull_request.current_review}"
-end
+pull_request.show_review_status
 
 # require "pry";binding.pry
 
