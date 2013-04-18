@@ -13,6 +13,8 @@ include Hub::Context
 include Hub::GitHubAPI::HttpMethods
 
 def sh(cmd)
+  raise "newline in command" if cmd.include?("\n")
+
   output = %x{#{cmd} 2>&1}
   raise "'command #{cmd}' failed with #{output}" unless $? == 0
 
@@ -80,12 +82,8 @@ def output_choices(pull_request)
   puts
 end
 
-def open_url(url)
-  sh "open #{url} || firefox #{url} || firefox-bin #{url}"
-end
-
-def open_compare(project, pull_request, from, to)
-  open_url project.web_url("/compare/#{from}...#{to}")
+def compare_url(pull_request, from, to)
+  "#{pull_request.base_repo_html_url}/compare/#{from}...#{to}"
 end
 
 def sha_equal(a, b)
@@ -97,7 +95,7 @@ def find_merge_base(master_rev, branch_rev)
 end
 
 def find_merge_base_with_pull(pull_request)
-  current_branch_name = sh "git rev-parse --abbrev-ref HEAD".strip
+  current_branch_name = sh("git rev-parse --abbrev-ref HEAD").strip
   retried = false
 
   begin
@@ -113,71 +111,93 @@ def find_merge_base_with_pull(pull_request)
   end
 end
 
+def show_cruises(pull_request)
+  if !pull_request.successful_cruises.empty?
+    puts "successful cruises: #{pull_request.successful_cruises.join(", ")}"
+  elsif !pull_request.failing_cruises.empty?
+    puts "only failing cruises:"
+    puts pull_request.failing_cruises.first
+  else
+    puts "no current cruises."
+  end
+  puts
+end
 
-project = local_repo.main_project
+def show_pending_merges(pull_request)
+  sh "git co #{pull_request.master_branch_name}"
+  sh "hub co #{pull_request.url}"
+
+  merge_base = find_merge_base_with_pull(pull_request)
+
+  if merge_base == pull_request.master_branch_current_sha
+    puts "pull request is fast-forward-able."
+  else
+    puts "pull request must be merged, merge base is #{merge_base}."
+    puts compare_url(pull_request, merge_base, pull_request.master_branch_name)
+  end
+  puts
+end
 
 pull_url = ARGV[0]
-unless pull_url =~ /\/pull\/(\d+)/
+unless pull_url.match(/\/([^\/]+)\/pull\/(\d+)/)
   puts "usage: pull-status.rb <github pull url>"
   exit
 end
-pull_id = $1
+
+project_name = $1
+pull_id = $2
+
+local_repos_mapping_file = File.expand_path("~/.config/maintainer_tools/local_repositories.yml")
+
+if !File.exists?(local_repos_mapping_file)
+  raise "missing configuration file: `#{local_repos_mapping_file}`"
+end
+
+project_directory_mapping = YAML.load(File.read(local_repos_mapping_file))
+
+local_repo_dir = File.expand_path(project_directory_mapping[project_name])
+
+if !local_repo_dir
+  raise "no local repository configured for project `#{project_name}`, check `#{local_repos_mapping_file}`"
+end
+
+Dir.chdir local_repo_dir
+
+project = local_repo.main_project
 
 api = Hub::Commands.__send__(:api_client)
 
 pull_request = PullRequest.new(api.pullrequest_info(project, pull_id))
 
-puts "pull request sha: #{pull_request.current_sha}"
-puts
+show_cruises(pull_request)
+
+show_pending_merges(pull_request)
 
 if !pull_request.current_review
   puts "never reviewed."
+  puts "diff_chunks #{pull_request.master_branch_name} ^head ^#{pull_request.current_review.sha} | pbcopy"
+
   if lmc = pull_request.maintainer_comments.last
     puts "last maintainer comment:"
     puts lmc.body
   end
+
+  puts
   output_choices(pull_request)
 elsif !sha_equal(pull_request.current_review.sha, pull_request.current_sha)
-  puts "unreviewed commits present. opening in brower."
-  open_compare(project, pull_request, pull_request.current_review.sha, pull_request.current_sha)
-
   puts
-  puts "last approval from maintainer was:"
-  puts pull_request.current_review
+  puts "last approval from maintainer was: #{pull_request.current_review}"
   puts
 
+  puts "unreviewed commits: "
+  puts compare_url(pull_request, pull_request.current_review.sha, pull_request.current_sha)
+  puts "diff_chunks #{pull_request.master_branch_name} ^head ^#{pull_request.current_review.sha}"
+
+  puts
   output_choices(pull_request)
 else
   puts "everything reviewed, approval: #{pull_request.current_review}"
 end
 
-
-if !pull_request.successful_cruises.empty?
-  puts "successful cruises: #{pull_request.successful_cruises.join(", ")}"
-elsif !pull_request.failing_cruises.empty?
-  puts "only failing cruises."
-  open_url pull_request.failing_cruises.first
-else
-  puts "no current cruises."
-end
-puts
-
-# base_sha1 = sh("git ls-remote #{pull_request.base_repo["ssh_url"]} #{pull_request.master_branch_name}").split(" ").first
-
-sh "git co #{pull_request.master_branch_name}"
-sh "hub co #{pull_url}"
-
-merge_base = find_merge_base_with_pull(pull_request)
-
-if merge_base == pull_request.master_branch_current_sha
-  puts "pull request is fast-forward-able."
-else
-  puts "pull request must be merged, merge base is #{merge_base}."
-  open_compare(project, pull_request, merge_base, pull_request.master_branch_name)
-end
-puts
-
-# require "pry"
-# binding.pry
-
+# require "pry";binding.pry
 

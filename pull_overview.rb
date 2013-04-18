@@ -80,7 +80,6 @@ requests_to_review = requests.select(&:needs_review?).sort_by(&:due_date)
 requests_to_review.each do |request|
   puts "# #{request.data["user"]["login"]}/#{request.data["base"]["repo"]["name"]}: #{request.title}"
   puts request.data["html_url"]
-  puts "Template: FEEDBACK (#{request.current_sha})"
   puts "NOT DUE" if request.not_due?
   puts "RE-REVIEW" unless request.never_reviewed?
   puts

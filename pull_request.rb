@@ -9,6 +9,14 @@ class PullRequest
     @data
   end
 
+  def url
+    data["html_url"]
+  end
+
+  def base_repo_html_url
+    data["base"]["repo"]["html_url"]
+  end
+
   def title
     data['title']
   end
