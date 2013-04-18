@@ -95,6 +95,66 @@ PullRequest.__send__(:include, WithCruises)
 
 module Reporting
 
+  def show_cruises
+    if !successful_cruises.empty?
+      puts "successful cruises: #{successful_cruises.join(", ")}"
+    elsif !failing_cruises.empty?
+      puts "only failing cruises:"
+      puts failing_cruises.first
+    else
+      puts "no current cruises."
+    end
+    puts
+  end
+
+  def show_pending_merges
+    sh "git co #{master_branch_name}"
+    sh "hub co #{url}"
+
+    merge_base = find_merge_base_with_pull
+
+    if merge_base == master_branch_current_sha
+      puts "pull request is fast-forward-able."
+    else
+      puts "pull request must be merged, merge base is #{merge_base}."
+      puts compare_url(merge_base, master_branch_name)
+    end
+    puts
+  end
+
+  def show_review_status
+    if !current_review
+      puts "never reviewed."
+
+      puts "#{url}/files?w=1"
+      puts diff_chunks_command("#{current_sha} ^#{master_branch_name}")
+
+      puts
+      output_choices
+    elsif !sha_equal(current_review.sha, current_sha)
+      puts
+      puts "last approval from maintainer was: #{current_review}"
+      puts
+
+      if lmc = maintainer_comments.last
+        puts "last maintainer comment:"
+        puts lmc.body.gsub(/\r/, "")
+        puts
+      end
+
+      puts "unreviewed commits: "
+      puts compare_url(current_review.sha, current_sha)
+      puts diff_chunks_command("#{current_sha} ^#{master_branch_name} ^#{current_review.sha}")
+
+      puts
+      output_choices
+    else
+      puts "everything reviewed, approval: #{current_review}"
+    end
+  end
+
+  private
+
   def output_choices
     puts "possible choices:"
     puts "OK (#{current_sha})"
@@ -131,66 +191,11 @@ module Reporting
     end
   end
 
-  def show_cruises
-    if !successful_cruises.empty?
-      puts "successful cruises: #{successful_cruises.join(", ")}"
-    elsif !failing_cruises.empty?
-      puts "only failing cruises:"
-      puts failing_cruises.first
-    else
-      puts "no current cruises."
-    end
-    puts
-  end
-
-  def show_pending_merges
-    sh "git co #{master_branch_name}"
-    sh "hub co #{url}"
-
-    merge_base = find_merge_base_with_pull
-
-    if merge_base == master_branch_current_sha
-      puts "pull request is fast-forward-able."
-    else
-      puts "pull request must be merged, merge base is #{merge_base}."
-      puts compare_url(merge_base, master_branch_name)
-    end
-    puts
-  end
 
   def diff_chunks_command(args)
     "cd #{Dir.pwd} && diff_chunks #{args}"
   end
 
-  def show_review_status
-    if !current_review
-      puts
-      puts "never reviewed."
-      puts diff_chunks_command("#{current_sha} ^#{master_branch_name}")
-
-      puts
-      output_choices
-    elsif !sha_equal(current_review.sha, current_sha)
-      puts
-      puts "last approval from maintainer was: #{current_review}"
-      puts
-
-      if lmc = maintainer_comments.last
-        puts "last maintainer comment:"
-        puts lmc.body.gsub(/\r/, "")
-        puts
-      end
-
-      puts "unreviewed commits: "
-      puts compare_url(current_review.sha, current_sha)
-      puts diff_chunks_command("#{current_sha} ^#{master_branch_name} ^#{current_review.sha}")
-
-      puts
-      output_choices
-    else
-      puts "everything reviewed, approval: #{current_review}"
-    end
-  end
 end
 
 PullRequest.__send__(:include, Reporting)
