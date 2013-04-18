@@ -182,17 +182,18 @@ if !pull_request.current_review
   puts "never reviewed."
   puts diff_chunks_command("#{pull_request.master_branch_name} ^head ^#{pull_request.current_review.sha}")
 
-  if lmc = pull_request.maintainer_comments.last
-    puts "last maintainer comment:"
-    puts lmc.body
-  end
-
   puts
   output_choices(pull_request)
 elsif !sha_equal(pull_request.current_review.sha, pull_request.current_sha)
   puts
   puts "last approval from maintainer was: #{pull_request.current_review}"
   puts
+
+  if lmc = pull_request.maintainer_comments.last
+    puts "last maintainer comment:"
+    puts lmc.body.gsub(/\r/, "")
+    puts
+  end
 
   puts "unreviewed commits: "
   puts compare_url(pull_request, pull_request.current_review.sha, pull_request.current_sha)
