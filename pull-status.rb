@@ -142,6 +142,7 @@ module Reporting
 
       puts "#{url}/files?w=1"
       puts diff_chunks_command("#{current_sha} ^#{master_branch_name}")
+      puts name_status_command
 
       puts
       output_choices
@@ -159,6 +160,7 @@ module Reporting
       puts "unreviewed commits: "
       puts compare_url(current_review.sha, current_sha)
       puts diff_chunks_command("#{current_sha} ^#{master_branch_name} ^#{current_review.sha}")
+      puts name_status_command
 
       puts
       output_choices
@@ -208,6 +210,10 @@ module Reporting
 
   def diff_chunks_command(args)
     "cd #{Dir.pwd} && diff_chunks #{args}"
+  end
+
+  def name_status_command
+    "cd #{Dir.pwd} && git diff #{master_branch_name}...#{current_sha} --name-status"
   end
 
 end
