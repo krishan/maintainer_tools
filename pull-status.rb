@@ -122,8 +122,8 @@ module Reporting
   end
 
   def show_pending_merges
-    sh "git co #{master_branch_name}"
-    sh "hub co #{url}"
+    sh "git checkout #{master_branch_name}"
+    sh "hub checkout #{url}"
 
     merge_base = find_merge_base_with_pull
 
@@ -198,7 +198,7 @@ module Reporting
       find_merge_base(master_branch_current_sha, current_sha)
     rescue
       raise if retried
-      sh "git co #{master_branch_name}"
+      sh "git checkout #{master_branch_name}"
       sh "git pull"
       retried = true
       retry
