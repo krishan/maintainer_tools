@@ -38,6 +38,10 @@ class Comment
     data["body"]
   end
 
+  def pre_ok?
+    body =~ /PRE-OK/
+  end
+
   private
 
   def extract_review(comment_body)

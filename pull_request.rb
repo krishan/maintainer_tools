@@ -87,6 +87,12 @@ class PullRequest
     last_status_comment.status if last_status_comment
   end
 
+  def pre_ok?
+    comments.detect do |comment|
+      comment.pre_ok?
+    end
+  end
+
   def current_approval
     last_review_comment.status
   end

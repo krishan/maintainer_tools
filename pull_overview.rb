@@ -82,6 +82,7 @@ requests_to_review.each do |request|
   puts request.data["html_url"]
   puts "NOT DUE" if request.not_due?
   puts "RE-REVIEW" unless request.never_reviewed?
+  puts "PRE-OK" if request.pre_ok?
   puts
 end
 
