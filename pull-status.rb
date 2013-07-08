@@ -151,12 +151,6 @@ module Reporting
       puts "last approval from maintainer was: #{current_review}"
       puts
 
-      if lmc = maintainer_comments.last
-        puts "last maintainer comment:"
-        puts lmc.body.gsub(/\r/, "")
-        puts
-      end
-
       puts "unreviewed commits: "
       puts compare_url(current_review.sha, current_sha)
       puts diff_chunks_command("#{current_sha} ^#{master_branch_name} ^#{current_review.sha}")
