@@ -46,9 +46,19 @@ class PullRequest
   end
 
   def comments
-    @comments ||= api.get(data["_links"]["comments"]["href"]).data.map do |raw_comment|
+    @comments ||= retrieve_comments
+  end
+
+  def retrieve_comments
+    results = api.get("#{data["_links"]["comments"]["href"]}?per_page=100").data.map do |raw_comment|
       Comment.new(raw_comment)
     end
+
+    if results.size >= 100
+      raise ">= 100 comments found and no pagination logic implemented yet, see: http://developer.github.com/v3/#pagination"
+    end
+
+    results
   end
 
   def api
