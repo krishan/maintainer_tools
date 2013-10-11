@@ -45,13 +45,13 @@ class Comment
   private
 
   def extract_review(comment_body)
-    if comment_body =~ /(FEEDBACK|OK) \(\s*([0-9a-f]{7,40})\s*\)/
+    if comment_body =~ /(?<!-)\b(FEEDBACK|OK) \(\s*([0-9a-f]{7,40})\s*\)/
       Review.new($1, $2)
     end
   end
 
   def extract_status(comment_body)
-    if comment_body =~ /(REVIEW|FEEDBACK|OK)/
+    if comment_body =~ /(?<!-)\b(REVIEW|FEEDBACK|OK)\b/
       $1
     end
   end
