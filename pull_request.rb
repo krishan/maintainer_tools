@@ -29,6 +29,10 @@ class PullRequest
     data["base"]["repo"]
   end
 
+  def base_branch_name
+    data["base"]["ref"]
+  end
+
   def master_branch_current_sha
     master_branch_info["commit"]["sha"]
   end
@@ -63,6 +67,10 @@ class PullRequest
 
   def api
     Hub::Commands.__send__(:api_client)
+  end
+
+  def updated_at
+    Time.parse(data["updated_at"])
   end
 
   def current_review

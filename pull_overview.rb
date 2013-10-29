@@ -66,6 +66,12 @@ requests = raw_requests.map do |raw_data|
   PullRequest.new(raw_data)
 end
 
+# filter out requests not against the default branch
+requests = requests.select { |request| request.master_branch_name == request.base_branch_name }
+
+# filter out request that have not been updated for a long time
+requests = requests.select { |request| request.updated_at >= Time.now - 14.days }
+
 # preload comments in parallel
 # lets hope everything is thread-safe :-)
 threads = requests.map do |request|
