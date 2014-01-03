@@ -41,21 +41,25 @@ end
 
 module WithCruises
 
+  def dcc_session_cookie
+    @dcc_session_cookie ||= File.read(File.expand_path("~/.config/maintainer_tools/dcc_session_cookie"))
+  end
+
   def cruises
     @cruises ||=
       begin
         comment_bodies = comments.map { |comment| comment.body }
         cruise_urls = (comment_bodies + [data["body"]]).
-          map { |text| text.scan(/(http:\/\/cruise\S+)/) }.
+          map { |text| text.scan(/(https:\/\/dcc.infopark.de\S+)/) }.
           flatten
 
         cruise_urls.
           map do |url_string|
-            url = replacement_cruise_url(URI.parse(url_string))
+            url = URI.parse(url_string)
 
             output =
               begin
-                RestClient.get(url.to_s)
+                RestClient.get(url.to_s, cookies: {"_dcc_session" => dcc_session_cookie})
               rescue RestClient::ResourceNotFound
               end
 
@@ -65,18 +69,6 @@ module WithCruises
             cruise[:output] == nil
           end
       end
-  end
-
-  def replacement_cruise_url(source_url)
-    url = source_url.dup
-
-    # when accessing "cruise.infopark" through a tunnel, enable this code
-    if false
-      url.host = "localhost"
-      url.port = 10080
-    end
-
-    url
   end
 
   def successful_cruises
