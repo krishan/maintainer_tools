@@ -38,7 +38,7 @@ class PullRequest
   end
 
   def master_branch_info
-    @master_branch_info ||= api.get(base_repo["url"]+"/branches/#{master_branch_name}").data
+    @master_branch_info ||= api_get(base_repo["url"]+"/branches/#{master_branch_name}").data
   end
 
   def master_branch_name
@@ -54,7 +54,7 @@ class PullRequest
   end
 
   def retrieve_comments
-    results = api.get("#{data["_links"]["comments"]["href"]}?per_page=100").data.map do |raw_comment|
+    results = api_get("#{data["_links"]["comments"]["href"]}?per_page=100").data.map do |raw_comment|
       Comment.new(raw_comment)
     end
 
@@ -65,8 +65,14 @@ class PullRequest
     results
   end
 
-  def api
-    Hub::Commands.__send__(:api_client)
+  def api_get(url)
+    tries = 0
+    begin
+      tries += 1
+      Hub::Commands.__send__(:api_client).get(url)
+    rescue Errno::ETIMEDOUT
+      retry if tries <= 3
+    end
   end
 
   def updated_at
@@ -78,7 +84,7 @@ class PullRequest
   end
 
   def maintainers
-    @maintainers ||= [api.get("https://api.github.com/user").data["login"]]
+    @maintainers ||= [api_get("https://api.github.com/user").data["login"]]
   end
 
   def maintainer_comments
