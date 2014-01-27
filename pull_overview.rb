@@ -72,20 +72,22 @@ requests = requests.select { |request| request.master_branch_name == request.bas
 # filter out request that have not been updated for a long time
 requests = requests.select { |request| request.updated_at >= Time.now - 14.days }
 
-# preload comments in parallel
+# preload requests in parallel
 # lets hope everything is thread-safe :-)
 threads = requests.map do |request|
-  Thread.new do
-    request.comments
-  end
+  [
+    Thread.new { request.comments },
+    Thread.new { request.comparison }
+  ]
 end
-threads.each(&:join)
+threads.flatten.each(&:join)
 
 requests_to_review = requests.select(&:needs_review?).sort_by(&:due_date)
 
 requests_to_review.each do |request|
   puts "# #{request.data["user"]["login"]}/#{request.data["base"]["repo"]["name"]}: #{request.title}"
   puts request.data["html_url"]
+  puts "Changed Lines: #{request.number_of_changed_lines}"
   puts "NOT DUE" if request.not_due?
   puts "RE-REVIEW" unless request.never_reviewed?
   puts "PRE-OK" if request.pre_ok?
