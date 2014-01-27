@@ -33,6 +33,14 @@ class PullRequest
     data["base"]["ref"]
   end
 
+  def number_of_changed_lines
+    comparison["files"].map { |file| file["changes"] }.inject(:+)
+  end
+
+  def comparison
+    @comparion ||= api_get("#{base_repo["url"]}/compare/#{base_branch_name}...#{current_sha}").data
+  end
+
   def master_branch_current_sha
     master_branch_info["commit"]["sha"]
   end
