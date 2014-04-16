@@ -50,7 +50,7 @@ class PullRequest
   end
 
   def master_branch_name
-    base_repo["master_branch"]
+    base_repo["default_branch"]
   end
 
   def current_sha
